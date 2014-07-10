@@ -1,3 +1,7 @@
+jenkins_polling*
+config.yml
+login.yml
+login_with_irb.rb
 *.gem
 *.rbc
 /.config
