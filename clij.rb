@@ -3,6 +3,9 @@ require 'yaml'
 require 'net/https'
 require 'optparse'
 require 'cron2english'
+require 'gli'
+
+include GLI::App
 
 ##############################################################################
 #
@@ -12,6 +15,55 @@ require 'cron2english'
 #              poll_revert)
 # (
 ##############################################################################
+
+program_desc 'Manage Jenkins polling via command line'
+subcommand_option_handling :normal
+
+desc 'List jobs in Jenkins'
+long_desc <<EOS
+List jobs in Jenkins matching the argument given.  Use 'all' to list all jobs being managed by Jenkins
+EOS
+arg_name 'job_name', :optional
+command :list do |c|
+  c.desc 'List all jobs managed by Jenkins'
+  c.command :all do |all|
+    all.action do |global_options,options,args|
+     job_list_all()
+    end
+  end
+  c.action do |global_options,options,args|
+    job_search_name(args[0])
+  end
+end
+
+desc 'Show or manipulate job polling status'
+long_desc <<EOS
+Show the existence of, detailed information on, or manipulate the polling status of jobs being
+managed by Jenkins
+EOS
+arg_name 'job_name', :optional
+command :poll do |c|
+  c.command :status do |status|
+    status.command :all do |all|
+      all.action do |global_options,options,args|
+        all_poll_status()
+      end
+    end
+    status.switch [:d,:detailed], :default_value => false
+    status.action do |global_options,options,args|
+      unless options[:detailed] == true
+        request_type = 'basic'
+      else
+        request_type = 'detailed'
+      end
+      p args
+      p request_type
+      job_poll_status(args[0], request_type)
+    end
+  end
+end
+
+
 
 def all_poll_status()
   j = 0
@@ -159,13 +211,11 @@ end
 
 ###########################
 def main()
-
-  # just here to do something for now
-  all_poll_status()
+  exit run(ARGV)
 rescue Cron2English::ParseException => e
   print e.inspect
-rescue Interrupt => e
-  print "\nclij:  user cancelled via Ctrl-C\n"
+#rescue Interrupt => e
+#  print "\nclij:  user cancelled via Ctrl-C\n"
 end
 
 begin
