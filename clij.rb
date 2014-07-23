@@ -1,29 +1,41 @@
+#! /usr/local/opt/ruby193/bin/ruby
+# *sigh*
+
 require 'jenkins_api_client'
 require 'yaml'
 require 'net/https'
 require 'optparse'
 require 'cron2english'
 require 'gli'
+require './Logd'
 
 include GLI::App
 
-##############################################################################
-#
-# clij [options] command [jobname]
-# 
-# (-a, --all): modifies the command to the all verison (poll_status, poll_off,
-#              poll_revert)
-# (
-##############################################################################
-
 program_desc 'Manage Jenkins polling via command line'
 subcommand_option_handling :normal
+sort_help :manually
+
+config_file '.clij.rc'
+flag [:u, :username], :arg_name => 'user', :desc => 'Jenkins server username'
+flag [:p, :password], :arg_name => 'password', :mask => true, :desc => 'Jenkins server password'
+flag :i, :arg_name => 'ip_address', :desc => 'Jenkins server IP address', :must_match => /\d+\.\d+\.\d+\.\d+/
+flag [:n, :port], :arg_name => 'port_number', :desc => 'Port number used by Jenkins', :default => '8080', :must_match => /\d+/
+flag [:l, :logname], :arg_name => 'log-file-name', :desc => 'Log all output to log-file-name'
+flag [:j, :path], :arg_name => 'path_to_jenkins', :desc => 'Path to Jenkins', :default => '/'
+flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :must_match => { "debug" => 1,
+                                                                                                             "info"  => 2,
+                                                                                                             "warn"  => 3,
+                                                                                                             "error" => 4,
+                                                                                                             "fatal" => 5}
+flag :header, :arg_name => 'clij message header', :desc => 'Header used by clij to identify its management of a field in Jenkins'
+switch :ssl, :desc => 'Use SSL to connect to Jenkins'
+switch :o, :desc => 'Send output to STDOUT', :default_value => true, :negatable => true
 
 desc 'List jobs in Jenkins'
 long_desc <<EOS
 List jobs in Jenkins matching the argument given.  Use 'all' to list all jobs being managed by Jenkins
 EOS
-arg_name 'job_name', :optional
+arg_name 'job_name'
 command :list do |c|
   c.desc 'List all jobs managed by Jenkins'
   c.command :all do |all|
@@ -31,7 +43,11 @@ command :list do |c|
      job_list_all()
     end
   end
+  c.desc 'List all jobs containing job_name'
   c.action do |global_options,options,args|
+    if args[0].nil?
+      help_now!("job_name is required, or try 'clij list all'")
+    end
     job_search_name(args[0])
   end
 end
@@ -56,9 +72,37 @@ command :poll do |c|
       else
         request_type = 'detailed'
       end
-      p args
-      p request_type
       job_poll_status(args[0], request_type)
+    end
+  end
+  c.desc 'Manipulate the trigger of Jenkins managed jobs that use polling'
+  c.command :spec do |spec|
+    arg_name 'job_name spec'
+    spec.desc 'Write a new spec, while backing up the old one'
+    spec.command :write do |write|
+      write.action do |gobal_options, options, args|
+        job_name = args.shift
+        spec = args.join(" ")
+        write_trigger_spec(job_name, spec)
+      nd
+    end
+    spec.desc 'Back up the current polling trigger spec of a job'
+    spec.command :backup do |backup|
+      backup.action do |global_options, options, args|
+        backup_trigger_spec(args[0])
+      end
+    end
+    spec.desc 'Print the current polling trigger spec in a readable format'
+    spec.command :parse do |parse|
+      parse.action do |global_options, options, args|
+        parse_trigger_spec(args[0])
+      end
+    end
+    spec.desc "Revert a job's polling trigger spec to its original state"
+    spec.command :revert do |revert|
+      revert.action do |global_options, options, args|
+        job_poll_revert(args[0])
+      end
     end
   end
 end
@@ -101,19 +145,19 @@ def job_poll_status(job, request_type='basic')
 # reverted to>"
   if request_type == 'detailed'
     if @client.job.get_config(job).include?('SCMTrigger')
-      puts "Active Polling found: "
-      puts "----------------------"
+      @log.info "Active Polling found: "
+      @log.info "----------------------"
       @doc = get_trigger_spec(job)
-      puts @doc.xpath("//spec").to_s.gsub!(/<\/?spec>/,'')
-      puts ""
+      @log.info(@doc.xpath("//spec").to_s.gsub!(/<\/?spec>/,''))
+      #puts ""
     else 
-      puts "No polling found for job #{job}."
-      puts ""
+      @log.info "No polling found for job #{job}."
+      #puts ""
     end
   elsif request_type.nil? || request_type == 'basic'
-    puts @client.job.get_config(job).include?('SCMTrigger')
+    @log.info(@client.job.get_config(job).include?('SCMTrigger'))
   else 
-    p "Error:  Unsupported option in job_poll_status"
+    @log.error "Unsupported option in job_poll_status"
   end
 end
 
@@ -164,8 +208,23 @@ def get_trigger_spec(job)
   Nokogiri::XML(@client.job.get_config(job))
 end
 
-def write_trigger_spec(spec)
+def write_trigger_spec(job, spec)
 # will write a spec to <hudson.triggers.SCMTrigger><spec>
+  doc = config_obtain(job)
+  if doc.search('spec').empty?
+    puts "#{job} doesn't have polling set in its configuration."
+  else
+    polling = doc.at_css "spec"
+    unless polling.content.include?(@CLIJ_MSG_HEADER)
+      polling.content = "#{@CLIJ_MSG_HEADER}\n" + "#{spec}" + polling.content.split("\n").map {|y| "#" + y}.join("\n")
+    else
+      polling.content = "#{spec}" + polling.content.split("\n").map {|y| "#" +y}.join("\n")
+    end
+    @client.job.update(job, doc.to_xml)
+  end
+rescue Timeout::Error
+  logger.error "Timeout while writing to #{job}"
+  retry
 end
 
 def backup_trigger_spec(job)
@@ -180,13 +239,14 @@ def backup_trigger_spec(job)
     polling.content = "#{@CLIJ_MSG_HEADER}\n" + polling.content.split("\n").map {|y| "#" + y}.join("\n")
     @client.job.update(job, doc.to_xml)
   end
-rescue Timeout::Error => e
+rescue Timeout::Error
+  logger.error "Timeout while backing up polling spec on #{job}"
   retry
 end
 
 def job_list_all()
   # obtain a list of every job on the jenkins server
-  puts @client.job.list_all
+  log.infoi(@client.job.list_all)
 end
 
 def job_search_name(partial_name)
@@ -194,9 +254,9 @@ def job_search_name(partial_name)
   to_filter = "#{partial_name}"
   filtered_list = @client.job.list(to_filter)
   if filtered_list.nil? || filtered_list == []
-    puts "Nothing found matching '#{partial_name}'"
+    log.info "Nothing found matching '#{partial_name}'"
   else
-    puts filtered_list
+    @log.info(filtered_list)
   end
 rescue Timeout::Error => e
   puts "#{e} waiting on job.list(#{to_filter})"
@@ -209,27 +269,32 @@ def config_obtain(job)
   Nokogiri::XML.fragment(@client.job.get_config(job))
 end
 
-###########################
-def main()
-  exit run(ARGV)
-rescue Cron2English::ParseException => e
-  print e.inspect
-#rescue Interrupt => e
-#  print "\nclij:  user cancelled via Ctrl-C\n"
-end
+pre do |global,command,options,arg|
+  #config_file = 'config.yml'
 
-begin
-  config_file = 'config.yml'
+
   verify_mode = OpenSSL::SSL::VERIFY_NONE
   #ssl_version = :TLSv1
   open_timeout = 2
   continue_timeout = 2
+  @log = Logger.new(STDOUT)
+
   client_opts = YAML.load_file(File.expand_path(config_file))
+  if global[:logname]
+    @log.attach(global[:logname])
+    client_opts[:log_location] = global[:logname]
+  end
   unless client_opts.has_key?(:msg_header)
     @CLIJ_MSG_HEADER = "### WARNING: This field is being managed, in part, by clij.\n### Manual changes are discouraged.\n"
-    else
+  else
       @CLIJ_MSG_HEADER = client_opts[:msg_header]
   end
+  @Log.debug(client_opts)
   @client = JenkinsApi::Client.new(client_opts)
-  main()
 end
+
+exit run(ARGV)
+#rescue Cron2English::ParseException => e
+#  print e.inspect
+#rescue Interrupt => e
+#  print "\nclij:  user cancelled via Ctrl-C\n"
