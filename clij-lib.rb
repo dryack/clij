@@ -37,21 +37,34 @@ def job_poll_status(job, request_type='basic')
 # basic:  yes or no
 # detailed:  returns "no" or "yes, <details> <if there are old details that can be
 # reverted to>"
+  @doc = get_trigger_spec(job)
   if request_type == 'detailed'
-    if @client.job.get_config(job).include?('SCMTrigger')
+    if @doc.to_s.include?('spec')
       @log.info "Active Polling found: "
       @log.info "----------------------"
-      @doc = get_trigger_spec(job)
-      @log.info(@doc.xpath("//spec").to_s.gsub!(/<\/?spec>/,''))
-      #puts ""
+      @log.info(@doc.xpath("//spec").to_s.gsub!(/<\/?[[:alpha:]]+>/,''))
     else 
       @log.info "No polling found for job #{job}."
-      #puts ""
     end
   elsif request_type.nil? || request_type == 'basic'
-    @log.info(@client.job.get_config(job).include?('SCMTrigger'))
+    @log.info(@doc.to_s.include?('spec'))
   else 
     @log.error "Unsupported option in job_poll_status"
+  end
+end
+
+def job_build_status(job)
+# will check to see if 'Discard Old Builds' is checked
+# and if so, the details of the setting(s)
+  @doc = get_trigger_spec(job)
+  @log.debug(@doc)
+  if @doc.to_s.include?('LogRotator')
+    @log.info("days to keep: #{@doc.xpath("//daysToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
+    @log.info("num to keep: #{@doc.xpath("//numToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
+    @log.info("artifacts days to keep: #{@doc.xpath("//artifactDaysToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
+    @log.info("artifacts num to keep: #{@doc.xpath("//artifactNumToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
+  else
+    @log.info "'Discard Old Builds' is not checked for #{job}"
   end
 end
 
