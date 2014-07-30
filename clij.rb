@@ -4,7 +4,6 @@
 require 'jenkins_api_client'
 require 'yaml'
 require 'net/https'
-require 'optparse'
 require 'cron2english'
 require 'gli'
 require './Logd'
@@ -23,7 +22,8 @@ flag :i, :arg_name => 'ip_address', :desc => 'Jenkins server IP address', :must_
 flag [:n, :port], :arg_name => 'port_number', :desc => 'Port number used by Jenkins', :default => '8080', :must_match => /\d+/
 flag [:l, :logname], :arg_name => 'log-file-name', :desc => 'Log all output to log-file-name'
 flag [:j, :path], :arg_name => 'path_to_jenkins', :desc => 'Path to Jenkins', :default => '/'
-flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :must_match => { "debug" => 1,
+flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :default=>'info',
+                                                                                            :must_match => { "debug" => 1,
                                                                                                              "info"  => 2,
                                                                                                              "warn"  => 3,
                                                                                                              "error" => 4,
@@ -123,15 +123,48 @@ command :job do |c|
   end  # poll
 end  # job
 
+
+#  Spits out configuration information
+#  in the format expected by Jenskin::Client
+def get_client_opts(global)
+  client_opts = {
+    :server_ip => global[:i],
+    :server_port => global[:port],
+    :jenkins_path => global[:path],
+    :username => global[:username],
+    :password => global[:password],
+    :ssl => global[:ssl],
+    :log_level => global[:log_level],
+    :msg_header => global[:header]
+  }
+  return client_opts
+end
+
+#  Needed because we've got two logger
+#  objects, only one of which is under
+#  our direct control.  meh
+def get_logging_level(global)
+  case global[:log_level]
+  when 1
+    return Logger::DEBUG
+  when 2
+    return Logger::INFO
+  when 3
+    return Logger::WARN
+  when 4
+    return Logger::ERROR
+  when 5
+    return Logger::FATAL
+  else
+    return Logger::INFO
+  end
+end
+
 pre do |global,command,options,arg|
-  config_file = 'config.yml'
-  #config_file '.clij.rc'
-  verify_mode = OpenSSL::SSL::VERIFY_NONE
-  #ssl_version = :TLSv1
-  open_timeout = 2
-  continue_timeout = 2
+  config_file '.clij.rc'
   @log = Logger.new(STDOUT)
-  client_opts = YAML.load_file(File.expand_path(config_file))
+  @log.level = get_logging_level(global)
+  client_opts = get_client_opts(global)
   if global[:logname]
     @log.attach(global[:logname])
     client_opts[:log_location] = global[:logname]
@@ -139,7 +172,7 @@ pre do |global,command,options,arg|
   unless client_opts.has_key?(:msg_header)
     @CLIJ_MSG_HEADER = "### WARNING: This field is being managed, in part, by clij.\n### Manual changes are discouraged.\n"
   else
-      @CLIJ_MSG_HEADER = client_opts[:msg_header]
+    @CLIJ_MSG_HEADER = client_opts[:msg_header]
   end
   @log.debug("Global options; #{global}")
   @log.debug("Options:  #{options}")
@@ -147,8 +180,3 @@ pre do |global,command,options,arg|
   @client = JenkinsApi::Client.new(client_opts)
 end
 exit run(ARGV)
-#rescue Cron2English::ParseException => e
-#  print e.inspect
-#rescue Interrupt => e
-#  print "\nclij:  user cancelled via Ctrl-C\n"
-#
