@@ -102,6 +102,46 @@ def get_trigger_spec(job)
   Nokogiri::XML(@client.job.get_config(job))
 end
 
+def job_discard_off(job)
+  doc = config_obtain(job)
+  root = doc.root
+  if root.search('logRotator').empty?
+    @log.info("'Discard Old Builds' not set on #{job}")
+  else
+    root.search('logRotator').children.remove
+    root.search('logRotator').remove
+    @client.job.update(job, root.to_xml)
+  end
+end
+
+def all_discard_off()
+  @client.job.list_all.each { |job| job_discard_off(job) }
+end
+
+def job_discard_on(job, daystokeep = "-1", numtokeep = "-1", artifactdaystokeep = "-1", artifactnumtokeep = "-1")
+  doc = config_obtain(job)
+  node = Nokogiri::XML::Node.new('logRotator', doc)
+  node_days_to_keep = Nokogiri::XML::Node.new('daysToKeep', doc)
+  node_num_to_keep = Nokogiri::XML::Node.new('numToKeep', doc)
+  a_node_days_to_keep = Nogogiri::XML::Node.new('artifactDaysToKeep', doc)
+  a_node_num_to_keep = Nokogiri::XML::Node.new('artifactNumToKeep', doc)
+  node.attributes = 'class = "hudson.tasks.LogRotator"'
+  node_days_to_keep.content = daystokeep
+  node_num_to_keep.content = numtokeep
+  a_node_days_to_keep.content = artifactdaystokeep
+  a_node_num_to_keep.content = artifactnumtokeep
+  node.add_child(node_days_to_keep)
+  node.add_child(node_num_to_keep)
+  node.add_child(node_a_days_to_keep)
+  node.add_child(node_a_num_to_keep)
+  node.parent = doc
+  @client.job.update(job, doc.to_xml)
+end
+
+def all_discard_on(daystokeep = "-1", numtokeep = "-1", artifactdaystokeep = "-1", artifactnumtokeep = "-1")
+  @client.job.list_all.each { |job| job_discard_on(daystokeep, numtokeep, artifactdaystokeep, artifactnumtokeep) }
+end
+
 def write_trigger_spec(job, spec)
 # will write a spec to <hudson.triggers.SCMTrigger><spec>
   doc = config_obtain(job)
