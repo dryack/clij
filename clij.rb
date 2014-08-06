@@ -121,7 +121,6 @@ command :job do |c|
       end
     end  # poll write
   end  # poll
-<<<<<<< HEAD
   c.desc "Toggle the 'Discard Old Builds' checkbox and/or manipulate its settings"
   c.command :discard do |discard|
     discard.arg_name '[all|job_name]'
@@ -167,7 +166,6 @@ command :job do |c|
       end  # discard on <job>
     end  # job discard on
   end  # job discard
-=======
   c.desc 'View details about or manipulate build retention'
   c.command :build do |build|
     build.command :status do |status|
@@ -180,7 +178,6 @@ command :job do |c|
       end
     end  # build status
   end  # build
->>>>>>> 96862ce59978b1faa470ae50ae15a6d30597cf36
 end  # job
 
 
