@@ -97,7 +97,7 @@ command :job do |c|
     poll.command :backup do |backup|
       backup.action do |global_options, options, args|
         if check_args(args)
-          backup_trigger_spec(arg[0])
+          backup_trigger_spec(args[0])
         end
       end
     end  # poll backup
@@ -121,6 +121,7 @@ command :job do |c|
       end
     end  # poll write
   end  # poll
+<<<<<<< HEAD
   c.desc "Toggle the 'Discard Old Builds' checkbox and/or manipulate its settings"
   c.command :discard do |discard|
     discard.arg_name '[all|job_name]'
@@ -166,6 +167,20 @@ command :job do |c|
       end  # discard on <job>
     end  # job discard on
   end  # job discard
+=======
+  c.desc 'View details about or manipulate build retention'
+  c.command :build do |build|
+    build.command :status do |status|
+      status.arg_name 'job_name'
+      status.desc 'Show details regarding the build retention of a job'
+      status.action do |global_options, options, args|
+        if check_args(args)
+          job_build_status(args[0])
+        end
+      end
+    end  # build status
+  end  # build
+>>>>>>> 96862ce59978b1faa470ae50ae15a6d30597cf36
 end  # job
 
 
