@@ -121,6 +121,51 @@ command :job do |c|
       end
     end  # poll write
   end  # poll
+  c.desc "Toggle the 'Discard Old Builds' checkbox and/or manipulate its settings"
+  c.command :discard do |discard|
+    discard.arg_name '[all|job_name]'
+    discard.command :off do |off|
+      off.desc 'Shut off the discarding of the old build'
+      off.command :all do |all|
+        all.action do |global_options, options, args|
+          puts "DO SOMETHING HERE SOMEDAY"
+        end
+      end  # discard off all
+      off.action do |global_options, options, args|
+        if check_args(args, "job_name is required or try 'clij job discard off all'")
+          job_name = args[0]
+          puts "DO SOMETHING HERE SOMEDAY"
+        end
+      end  # discard off
+    end
+    discard.arg_name '[all|job_name] [<days_to_keep>] [<max_num_to_keep> <artifacts_days> <artifacts_max_num_builds>]'
+    discard.command :on do |on|
+      on.desc 'Activate the discarding of old builds'
+      on.command :all do |all|
+        all.action do |global_options, options, args|
+          puts "DO SOMETHING HERE SOMEDAY"
+        end
+      end  # discard on all
+      on.action do |global_options, options, args|
+        if check_args(args, "job_name is required")
+          job_name = args.shift
+          unless args.empty?
+            daysToKeep = args.shift
+            unless args.empty?
+              numToKeep = args.shift
+              unless args.empty?
+                artifactDaysToKeep = args.shift
+                unless args.empty?
+                  artifactNumToKeep = args.shift
+                end
+              end
+            end
+          end
+        end
+        puts "DO SOMETHING HERE SOMEDAY"
+      end  # discard on <job>
+    end  # job discard on
+  end  # job discard
 end  # job
 
 
