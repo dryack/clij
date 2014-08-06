@@ -4,6 +4,9 @@ login.yml
 login_with_irb.rb
 *.gem
 *.rbc
+*.xml
+*xml*
+*.log
 /.config
 /coverage/
 /InstalledFiles
