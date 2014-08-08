@@ -23,11 +23,11 @@ flag [:n, :port], :arg_name => 'port_number', :desc => 'Port number used by Jenk
 flag [:l, :logname], :arg_name => 'log-file-name', :desc => 'Log all output to log-file-name'
 flag [:j, :path], :arg_name => 'path_to_jenkins', :desc => 'Path to Jenkins', :default => '/'
 flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :default=>'info',
-                                                                                            :must_match => { "debug" => 1,
-                                                                                                             "info"  => 2,
-                                                                                                             "warn"  => 3,
-                                                                                                             "error" => 4,
-                                                                                                             "fatal" => 5}
+                                                                                            :must_match => { "debug" => 0,
+                                                                                                             "info"  => 1,
+                                                                                                             "warn"  => 2,
+                                                                                                             "error" => 3,
+                                                                                                             "fatal" => 4}
 flag :header, :arg_name => 'clij message header', :desc => 'Header used by clij to identify its management of a field in Jenkins'
 switch :ssl, :desc => 'Use SSL to connect to Jenkins'
 switch :o, :desc => 'Send output to STDOUT', :default_value => true, :negatable => true
@@ -36,8 +36,10 @@ def check_args(args,help_msg="job_name is required")
   @log.debug(args)
   if args.nil? || args.empty?
     help_now!(help_msg)
+    @log.debug("check_args returns FALSE")
     return false
   else
+    @log.debug("check_args returns TRUE")
     return true
   end
 end
@@ -128,13 +130,18 @@ command :job do |c|
       off.desc 'Shut off the discarding of the old build'
       off.command :all do |all|
         all.action do |global_options, options, args|
-          puts "DO SOMETHING HERE SOMEDAY"
+          if global_options[:log_level] == "debug"
+            @log.debug("NOTE: 'clij job discard off all' will not be run while in debug mode.")
+            @log.debug("skipped method:  all_discard_off()")
+          else
+            #all_discard_off()
+          end
         end
       end  # discard off all
       off.action do |global_options, options, args|
         if check_args(args, "job_name is required or try 'clij job discard off all'")
           job_name = args[0]
-          puts "DO SOMETHING HERE SOMEDAY"
+          job_discard_off(job_name)
         end
       end  # discard off
     end
@@ -143,26 +150,38 @@ command :job do |c|
       on.desc 'Activate the discarding of old builds'
       on.command :all do |all|
         all.action do |global_options, options, args|
-          puts "DO SOMETHING HERE SOMEDAY"
+          if global_option[:log_level] == "debug"
+            @log.debug("NOTE:  'clij job discard on all' will not be run while in debug mode.")
+          else
+            #all_discard_on(...)
+          end
         end
       end  # discard on all
       on.action do |global_options, options, args|
         if check_args(args, "job_name is required")
           job_name = args.shift
           unless args.empty?
-            daysToKeep = args.shift
+            daystokeep = args.shift
             unless args.empty?
-              numToKeep = args.shift
+              numtokeep = args.shift
               unless args.empty?
-                artifactDaysToKeep = args.shift
+                artifactdaystokeep = args.shift
                 unless args.empty?
-                  artifactNumToKeep = args.shift
+                  artifactnumtokeep = args.shift
+                  job_discard_on(job_name, daystokeep, numtokeep, artifactdaystokeep, artifactnumtokeep)
+                else
+                  job_discard_on(job_name, daystokeep, numtokeep, artifactdaystokeep)
                 end
+              else
+                job_discard_on(job_name, daystokeep, numtokeep)
               end
+            else
+              job_discard_on(job_name, daystokeep)
             end
+          else
+            job_discard_on(job_name)
           end
         end
-        puts "DO SOMETHING HERE SOMEDAY"
       end  # discard on <job>
     end  # job discard on
   end  # job discard
@@ -202,15 +221,15 @@ end
 #  our direct control.  meh
 def get_logging_level(global)
   case global[:log_level]
-  when 1
+  when 0
     return Logger::DEBUG
-  when 2
+  when 1
     return Logger::INFO
-  when 3
+  when 2
     return Logger::WARN
-  when 4
+  when 3
     return Logger::ERROR
-  when 5
+  when 4
     return Logger::FATAL
   else
     return Logger::INFO
@@ -220,8 +239,9 @@ end
 pre do |global,command,options,arg|
   config_file '.clij.rc'
   @log = Logger.new(STDOUT)
-  @log.level = get_logging_level(global)
   client_opts = get_client_opts(global)
+  @log.level = get_logging_level(global)
+  @log.info("LOG LEVEL SET TO: #{@log.level}")
   if global[:logname]
     @log.attach(global[:logname])
     client_opts[:log_location] = global[:logname]

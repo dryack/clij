@@ -58,7 +58,7 @@ def job_build_status(job)
 # and if so, the details of the setting(s)
   @doc = get_trigger_spec(job)
   @log.debug(@doc)
-  if @doc.to_s.include?('LogRotator')
+  if @doc.to_s.include?('logRotator')
     @log.info("days to keep: #{@doc.xpath("//daysToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
     @log.info("num to keep: #{@doc.xpath("//numToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
     @log.info("artifacts days to keep: #{@doc.xpath("//artifactDaysToKeep").to_s.gsub!(/<\/?[[:alpha:]]+>/,'')}")
@@ -116,38 +116,68 @@ def get_trigger_spec(job)
 end
 
 def job_discard_off(job)
-  doc = config_obtain(job)
-  root = doc.root
-  if root.search('logRotator').empty?
-    @log.info("'Discard Old Builds' not set on #{job}")
+  @log.debug("entering job_discard_off()")
+  doc = Nokogiri::XML(@client.job.get_config(job))
+  @log.debug("got config as doc")
+  if doc.search('logRotator').empty?
+   job_discard_create(job, -1, -1, -1, -1) 
   else
-    root.search('logRotator').children.remove
-    root.search('logRotator').remove
-    @client.job.update(job, root.to_xml)
+    job_discard_change(job, -1, -1, -1, -1)
   end
+end
+
+def job_discard_on(job, daystokeep, numtokeep, adaystokeep, anumtokeep)
+  doc = Nokogiri::XML.parse(@client.job.get_config(job))
+  if doc.search('logRotator').empty?
+    job_discard_create(job, daystokeep, numtokeep, adaystokeep, anumtokeep)
+  else
+    job_discard_change(job, daystokeep, numtokeep, adaystokeep, anumtokeep)
+  end
+end
+
+def job_discard_change(job, daystokeep, numtokeep, artifactdaystokeep, artifactnumtokeep)
+  doc = Nokogiri::XML.parse(@client.job.get_config(job))
+  days = doc.at_css "daysToKeep"
+  num = doc.at_css "numToKeep"
+  artday = doc.at_css "artifactDaysToKeep"
+  artnum = doc.at_css "artifactNumToKeep"
+  days.content = daystokeep
+  num.content = numtokeep
+  artday.content = artifactdaystokeep
+  artnum.content = artifactnumtokeep
+  @client.job.update(job, doc.to_xml)
 end
 
 def all_discard_off()
   @client.job.list_all.each { |job| job_discard_off(job) }
 end
 
-def job_discard_on(job, daystokeep = "-1", numtokeep = "-1", artifactdaystokeep = "-1", artifactnumtokeep = "-1")
-  doc = config_obtain(job)
-  node = Nokogiri::XML::Node.new('logRotator', doc)
-  node_days_to_keep = Nokogiri::XML::Node.new('daysToKeep', doc)
-  node_num_to_keep = Nokogiri::XML::Node.new('numToKeep', doc)
-  a_node_days_to_keep = Nogogiri::XML::Node.new('artifactDaysToKeep', doc)
-  a_node_num_to_keep = Nokogiri::XML::Node.new('artifactNumToKeep', doc)
-  node.attributes = 'class = "hudson.tasks.LogRotator"'
+def job_discard_create(job, daystokeep="-1", numtokeep="5", artifactdaystokeep="-1", artifactnumtokeep="-1")
+  doc = Nokogiri::XML.parse(@client.job.get_config(job))
+  root = doc.root
+  @log.debug("config obtained")
+  node = Nokogiri::XML::Node.new('logRotator', root)
+  @log.debug("node logRotator created")
+  node_days_to_keep = Nokogiri::XML::Node.new('daysToKeep', root)
+  @log.debug("node logRotator child daysToKeep created")
+  node_num_to_keep = Nokogiri::XML::Node.new('numToKeep', root)
+  @log.debug("node logRotator child numToKeep created")
+  a_node_days_to_keep = Nokogiri::XML::Node.new('artifactDaysToKeep', root)
+  @log.debug("node logRotator child artifactDaysToKeep created")
+  a_node_num_to_keep = Nokogiri::XML::Node.new('artifactNumToKeep', root)
+  @log.debug("node logRotator child artifactNumToKeep created")
+  node['class'] = 'hudson.tasks.LogRotator'
+  @log.debug("node keys written")
   node_days_to_keep.content = daystokeep
   node_num_to_keep.content = numtokeep
   a_node_days_to_keep.content = artifactdaystokeep
   a_node_num_to_keep.content = artifactnumtokeep
+  @log.debug("child nodes created and populated")
   node.add_child(node_days_to_keep)
   node.add_child(node_num_to_keep)
-  node.add_child(node_a_days_to_keep)
-  node.add_child(node_a_num_to_keep)
-  node.parent = doc
+  node.add_child(a_node_days_to_keep)
+  node.add_child(a_node_num_to_keep)
+  node.parent = root
   @client.job.update(job, doc.to_xml)
 end
 
