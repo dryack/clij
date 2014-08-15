@@ -8,21 +8,20 @@ require 'cron2english'
 require 'gli'
 require './Logd'
 require './clij-lib'
-
 include GLI::App
 
 program_desc 'Manage Jenkins via command line'
 subcommand_option_handling :normal
 sort_help :manually
 
-config_file './.clij.rc'
+config_file '.clij.rc'
 flag [:u, :username], :arg_name => 'user', :desc => 'Jenkins server username'
 flag [:p, :password], :arg_name => 'password', :mask => true, :desc => 'Jenkins server password'
 flag :i, :arg_name => 'ip_address', :desc => 'Jenkins server IP address', :must_match => /\d+\.\d+\.\d+\.\d+/
-flag [:n, :port], :arg_name => 'port_number', :desc => 'Port number used by Jenkins', :default => '8080', :must_match => /\d+/
+flag [:n, :port], :arg_name => 'port_number', :desc => 'Port number used by Jenkins', :default_value => '8080', :must_match => /\d+/
 flag [:l, :logname], :arg_name => 'log-file-name', :desc => 'Log all output to log-file-name'
-flag [:j, :path], :arg_name => 'path_to_jenkins', :desc => 'Path to Jenkins', :default => '/'
-flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :default=>'info',
+flag [:j, :path], :arg_name => 'path_to_jenkins', :desc => 'Path to Jenkins', :default_value => '/'
+flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :default_value => 'info',
                                                                                             :must_match => { "debug" => 0,
                                                                                                              "info"  => 1,
                                                                                                              "warn"  => 2,
@@ -32,14 +31,14 @@ flag :header, :arg_name => 'clij message header', :desc => 'Header used by clij 
 switch :ssl, :desc => 'Use SSL to connect to Jenkins'
 switch :o, :desc => 'Send output to STDOUT', :default_value => true, :negatable => true
 
-def check_args(args,help_msg="job_name is required")
-  @log.debug(args)
+def check_args?(args,help_msg="job_name is required")
+  $log.debug(args)
   if args.nil? || args.empty?
     help_now!(help_msg)
-    @log.debug("check_args returns FALSE")
+    $log.debug("check_args? returns FALSE")
     return false
   else
-    @log.debug("check_args returns TRUE")
+    $log.debug("check_args? returns TRUE")
     return true
   end
 end
@@ -52,14 +51,16 @@ command :job do |c|
     list.desc 'List all jobs on the server'
     list.command :all do |all|
       all.action do |global_options, options, args|
-        job_list_all()
+        @waldo = Waldo.new
+        @waldo.job_list_all
       end
     end  # list all
     list.arg_name 'job_name'
     list.desc 'List all jobs containing job_name'
     list.action do |global_options, options, args|
-      if check_args(args, "job_name is required, or try 'clij job list all'")
-        job_search_name(args[0])
+      if check_args?(args, "job_name is required, or try 'clij job list all'")
+        @waldo = Waldo.new(args[0])
+        @waldo.job_search_name
       end
     end  # list <search>
   end  # list
@@ -71,7 +72,8 @@ command :job do |c|
       status.desc 'Print whether polling is enabled for each job on the server -- WARNING:  This is likely to fail on overburdened servers.'
       status.command :all do |all|
         all.action do |global_options, options, args|
-          all_poll_status()
+          @waldo = Waldo.new
+          @waldo.all_poll_status
         end
       end  #  poll status all
       status.arg_name 'job_name'
@@ -79,17 +81,18 @@ command :job do |c|
       status.switch [:d,:detailed], :desc => 'Provide detailed information on the polling', :default_value => false
       status.switch [:r,:parse], :desc => 'Attempt to provide english description of chrontab format', :defualt_value => false
       status.action do |global_options, options, args|
-        if check_args(args, "job_name is required, or try 'clij job status all'")
+        if check_args?(args, "job_name is required, or try 'clij job status all'")
           unless options[:detailed]
             request_type = 'basic'
-            @log.debug("request_type 'basic'")
+            $log.debug("request_type 'basic'")
           else
             request_type = 'detailed'
-            @log.debug("request_type 'detailed'")
+            $log.debug("request_type 'detailed'")
           end
-          job_poll_status(args[0], request_type)
+          @waldo = Waldo.new(args[0])
+          @waldo.job_poll_status(request_type)
           if options[:parse]
-            parse_trigger_spec(args[0])  
+            @waldo.parse_trigger_spec  
           end
         end
       end  # poll status job_name
@@ -98,16 +101,18 @@ command :job do |c|
     poll.desc 'Backup the current polling information for job_name'
     poll.command :backup do |backup|
       backup.action do |global_options, options, args|
-        if check_args(args)
-          backup_trigger_spec(args[0])
+        if check_args?(args)
+          @waldo = Waldo.new(args[0])
+          @waldo.backup_trigger_spec
         end
       end
     end  # poll backup
     poll.desc "Revert the most recent clij-caused change to a job's polling data"
     poll.command :revert do |revert|
       revert.action do |global_options, options, args|
-        if check_args(args)
-          job_poll_revert(args[0])
+        if check_args?(args)
+          @waldo = Waldo.new(args[0])
+          @waldo.job_poll_revert
         end
       end
     end  # poll revert
@@ -115,10 +120,10 @@ command :job do |c|
     poll.desc 'Write a spec and/or comments to a job.  Old information is backed up automatically.'
     poll.command :write do |write|
       write.action do |global_options, options, args|
-        if check_args(args)
-          job_name = args.shift
+        if check_args?(args)
+          @waldo = Waldo.new(args.shift)
           spec = args.join(" ")
-          write_trigger_spec(job_name, spec)
+          @waldo.write_trigger_spec(spec)
         end
       end
     end  # poll write
@@ -131,17 +136,18 @@ command :job do |c|
       off.command :all do |all|
         all.action do |global_options, options, args|
           if global_options[:log_level] == "debug"
-            @log.debug("NOTE: 'clij job discard off all' will not be run while in debug mode.")
-            @log.debug("skipped method:  all_discard_off()")
+            $log.debug("NOTE: 'clij job discard off all' will not be run while in debug mode.")
+            $log.debug("skipped method:  all_discard_off()")
           else
-            #all_discard_off()
+            @waldo = Waldo.new
+            #@waldo.all_discard_off
           end
         end
       end  # discard off all
       off.action do |global_options, options, args|
-        if check_args(args, "job_name is required or try 'clij job discard off all'")
-          job_name = args[0]
-          job_discard_off(job_name)
+        if check_args?(args, "job_name is required or try 'clij job discard off all'")
+          @waldo = Waldo.new(args[0])
+          @waldo.job_discard_off
         end
       end  # discard off
     end
@@ -151,15 +157,16 @@ command :job do |c|
       on.command :all do |all|
         all.action do |global_options, options, args|
           if global_option[:log_level] == "debug"
-            @log.debug("NOTE:  'clij job discard on all' will not be run while in debug mode.")
+            $log.debug("NOTE:  'clij job discard on all' will not be run while in debug mode.")
           else
-            #all_discard_on(...)
+            @waldo = Waldo.new
+            #@waldo.all_discard_on(...)
           end
         end
       end  # discard on all
       on.action do |global_options, options, args|
-        if check_args(args, "job_name is required")
-          job_name = args.shift
+        if check_args?(args, "job_name is required")
+          @waldo = Waldo.new(args.shift)
           unless args.empty?
             daystokeep = args.shift
             unless args.empty?
@@ -168,18 +175,18 @@ command :job do |c|
                 artifactdaystokeep = args.shift
                 unless args.empty?
                   artifactnumtokeep = args.shift
-                  job_discard_on(job_name, daystokeep, numtokeep, artifactdaystokeep, artifactnumtokeep)
+                  @waldo.job_discard_on(daystokeep, numtokeep, artifactdaystokeep, artifactnumtokeep)
                 else
-                  job_discard_on(job_name, daystokeep, numtokeep, artifactdaystokeep)
+                  @waldo.job_discard_on(daystokeep, numtokeep, artifactdaystokeep)
                 end
               else
-                job_discard_on(job_name, daystokeep, numtokeep)
+                @waldo.job_discard_on(daystokeep, numtokeep)
               end
             else
-              job_discard_on(job_name, daystokeep)
+              @waldo.job_discard_on(daystokeep)
             end
           else
-            job_discard_on(job_name)
+            @waldo.job_discard_on
           end
         end
       end  # discard on <job>
@@ -191,8 +198,9 @@ command :job do |c|
       status.arg_name 'job_name'
       status.desc 'Show details regarding the build retention of a job'
       status.action do |global_options, options, args|
-        if check_args(args)
-          job_build_status(args[0])
+        if check_args?(args)
+          @waldo = Waldo.new(args[0])
+          @waldo.job_build_status
         end
       end
     end  # build status
@@ -237,13 +245,13 @@ def get_logging_level(global)
 end
 
 pre do |global,command,options,arg|
-  config_file '.clij.rc'
-  @log = Logger.new(STDOUT)
+  $log = Logger.new(STDOUT)
   client_opts = get_client_opts(global)
-  @log.level = get_logging_level(global)
-  @log.info("LOG LEVEL SET TO: #{@log.level}")
+  $log.level = get_logging_level(global)
+  $log.info("LOG LEVEL SET TO: #{$log.level}")
+  p global[:log_level]
   if global[:logname]
-    @log.attach(global[:logname])
+    $log.attach(global[:logname])
     client_opts[:log_location] = global[:logname]
   end
   unless client_opts.has_key?(:msg_header)
@@ -251,9 +259,9 @@ pre do |global,command,options,arg|
   else
     @CLIJ_MSG_HEADER = client_opts[:msg_header]
   end
-  @log.debug("Global options; #{global}")
-  @log.debug("Options:  #{options}")
-  @log.debug("Client options: #{client_opts}")
-  @client = JenkinsApi::Client.new(client_opts)
+  $log.debug("Global options; #{global}")
+  $log.debug("Options:  #{options}")
+  $log.debug("Client options: #{client_opts}")
+  $client = JenkinsApi::Client.new(client_opts)
 end
 exit run(ARGV)
