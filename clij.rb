@@ -21,7 +21,7 @@ flag :i, :arg_name => 'ip_address', :desc => 'Jenkins server IP address', :must_
 flag [:n, :port], :arg_name => 'port_number', :desc => 'Port number used by Jenkins', :default_value => '8080', :must_match => /\d+/
 flag [:l, :logname], :arg_name => 'log-file-name', :desc => 'Log all output to log-file-name'
 flag [:j, :path], :arg_name => 'path_to_jenkins', :desc => 'Path to Jenkins', :default_value => '/'
-flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :default_value => 'info',
+flag [:g, :log_level], :arg_name => 'level', :desc => 'Jenkins API Log Levels to view/log', :default_value => 1,
                                                                                             :must_match => { "debug" => 0,
                                                                                                              "info"  => 1,
                                                                                                              "warn"  => 2,

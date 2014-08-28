@@ -3,13 +3,16 @@ require 'net/https'
 require 'cron2english'
 require './Logd'
 
-
 class Waldo
+  
+  
   def new(*job)
     initialize(job)
   end
   
   def initialize(*job)
+    @DUMP_FILE = ".clij-list.tmp"
+    @HOMEDIR = File.expand_path("~")
     $log.debug("entering Waldo::initialize")
     unless job.empty? || job.nil?
       @job = job.pop
@@ -19,26 +22,32 @@ class Waldo
     end
   end
 
-  def all_poll_status()
+  def all_poll_status
     $log.debug("entering Waldo::all_poll_status")
-    j = 0
-    $client.job.list_all.each do |x|
-      begin
-        if x == "BASE_JAVA_JOB" || x == "FAMC"
-          next
-        else
-          print x, " => "
-#         puts $client.job.get_config(x).include?('SCMTrigger')
-          puts $client.job.get_config(x).include?('spec')
-        end
-      rescue => e
-        print "..."
-        puts e
-        sleep(6)
-        retry
-      end
+    # normal run?
+    unless dump_file?
+      $log.debug("No dump file found; starting normally")
+      job_list = $client.job.list_all
+    # did we find a dump_file from an interrupted run?
+    else
+      job_list = load_dump_file
     end
+    # start the job run 
+    job_list.each do |job|
+      if job == "BASE_JAVA_JOB" || job == "FAMC"
+        job_list.delete("BASE_JAVA_JOB")
+        job_list.delete("FAMC")
+        next
+      else
+        $log.info("#{job} => #{$client.job.get_config(job).include?('spec')}")
+      end
+      job_list.shift
+      $log.debug("#{job_list[0]}")
+    end
+  rescue Interrupt 
+    recoverable_action(job_list)
   end
+  
 
   def all_poll_off()
   # will actually set all to poll once per month, spread out across the month
@@ -266,8 +275,10 @@ class Waldo
     puts "#{e} waiting on job.list(#{to_filter})"
     retry
   end
-
-  # private members past this point
+ 
+ ##########################################################################
+ # private members past this point
+ ########################################################################## 
   
   private
 
@@ -286,6 +297,33 @@ class Waldo
         (doc.xpath("//numToKeep").inner_text.to_i > 0) ||
         (doc.xpath("//artifactDaysToKeep").inner_text.to_i > 0) ||
         (doc.xpath("//artifactNumToKeep").inner_text.to_i > 0))
+      return true
+    else
+      return false
+    end
+  end
+  
+  def recoverable_action(job_list)
+    $log.debug("\nEntering Waldo::recoverable_action")
+    file = File.open("#{@HOMEDIR}/#{@DUMP_FILE}", "w")
+    $log.debug(file)
+    save_data = Marshal.dump(job_list, file)
+    $log.info("Remaining jobs dumped.  Re-run command line to continue from where you left off.")
+  end
+
+  def load_dump_file
+  # loads a found dump file and returns its contents
+  # to the caller
+    $log.debug("Using dump file to restart job")
+    file = File.open("#{@HOMEDIR}/#{@DUMP_FILE}", "r")
+    list_of_jobs = Marshal.load(file)
+    $log.debug("Deleting dump file...")
+    File.delete("#{@HOMEDIR}/#{@DUMP_FILE}")
+    return list_of_jobs
+  end
+
+  def dump_file?
+    if File.file?("#{@HOMEDIR}/#{@DUMP_FILE}")
       return true
     else
       return false
