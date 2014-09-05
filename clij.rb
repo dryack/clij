@@ -97,22 +97,12 @@ command :job do |c|
         end
       end  # poll status job_name
     end #  poll status 
-    poll.arg_name 'job_name'
-    poll.desc 'Backup the current polling information for job_name'
-    poll.command :backup do |backup|
-      backup.action do |global_options, options, args|
-        if check_args?(args)
-          @waldo = Waldo.new(args[0])
-          @waldo.backup_trigger_spec
-        end
-      end
-    end  # poll backup
     poll.desc "Revert the most recent clij-caused change to a job's polling data"
     poll.command :revert do |revert|
       revert.action do |global_options, options, args|
         if check_args?(args)
           @waldo = Waldo.new(args[0])
-          @waldo.job_poll_revert
+          @waldo.revert_trigger_spec
         end
       end
     end  # poll revert
@@ -247,17 +237,17 @@ end
 pre do |global,command,options,arg|
   $log = Logger.new(STDOUT)
   client_opts = get_client_opts(global)
+  unless client_opts.has_key?(:msg_header) && client_opts[:msg_header].nil? == false
+    $CLIJ_MSG_HEADER = "### WARNING: This field is being managed, in part, by clij.\n### Manual changes are discouraged.\n"
+  else
+    $CLIJ_MSG_HEADER = client_opts[:msg_header]
+  end
   $log.level = get_logging_level(global)
   $log.info("LOG LEVEL SET TO: #{$log.level}")
   p global[:log_level]
   if global[:logname]
     $log.attach(global[:logname])
     client_opts[:log_location] = global[:logname]
-  end
-  unless client_opts.has_key?(:msg_header)
-    @CLIJ_MSG_HEADER = "### WARNING: This field is being managed, in part, by clij.\n### Manual changes are discouraged.\n"
-  else
-    @CLIJ_MSG_HEADER = client_opts[:msg_header]
   end
   $log.debug("Global options; #{global}")
   $log.debug("Options:  #{options}")
